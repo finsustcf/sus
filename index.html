@@ -1,1 +1,33 @@
-
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#185747">
+  <meta name="description" content="永續金融公開資訊與週報，支援閱讀、搜尋及 Excel、Word、PowerPoint 下載。">
+  <title>永續金融週報</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+  <script defer src="./vendor/jszip.js"></script>
+  <script defer src="./vendor/docx.js"></script>
+  <script defer src="./vendor/pptxgen.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/13.0.0/firebase-app-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/13.0.0/firebase-auth-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/13.0.0/firebase-functions-compat.js"></script>
+  <script defer src="./firebase-config.js"></script>
+  <script defer src="./data.js"></script>
+  <script defer src="./report-utils.js"></script>
+  <script defer src="./firebase-client.js"></script>
+  <script defer src="./exports.js"></script>
+  <script defer src="./app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">前往主要內容</a>
+  <div id="app"></div>
+  <dialog id="detail-dialog" class="detail-dialog" aria-labelledby="detail-title"></dialog>
+  <dialog id="settings-dialog" aria-labelledby="settings-title"></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <noscript>請啟用 JavaScript，以使用搜尋與下載功能。</noscript>
+</body>
+</html>
