@@ -5,9 +5,10 @@
   const state = {
     user: null, admin: false, checkingAdmin: false, loading: true, connected: false,
     articles: [], archives: [], sources: [], settings: null, runtime: null,
-    quota: null, lastRun: null, status: null, error: '', range: null,
-    snapshot: null, insights: null, removed: [], removedLoading: false, removedError: '', removedHasMore: false
+    quota: null, lastRun: null, status: null, error: '', range: null, relatedIds: null,
+    knowledge: (D.knowledgeSeeds||[]).map(x=>({...x})), knowledgeLoading: false, knowledgeError: '', knowledgeLoaded: false, snapshot: null, insights: null, removed: [], removedLoading: false, removedError: '', removedHasMore: false, feedback: [],feedbackLoading:false,feedbackError:''
   };
+  let knowledgeTicket = 0;
   let db, auth, functions, epoch = 0, ticket = 0, removedRequest = 0, removedCursor = null;
   const emit = patch => {
     Object.assign(state, patch);
@@ -50,14 +51,15 @@
     return result.docs.map(normal);
   }
 
-  async function loadRange(from, to, { archiveId = null } = {}) {
+  async function loadRange(from, to, { archiveId = null, preferArchive = false } = {}) {
     if (!db) return;
     const request = ++ticket;
-    emit({ loading: true, error: '', range: { from, to }, snapshot: null, insights: null, articles: [] });
+    emit({ loading: true, error: '', range: { from, to }, relatedIds: null, snapshot: null, insights: null, articles: [] });
     try {
       const [archives, status] = await Promise.all([
         loadArchives(), db.doc(T.status + '/collection').get()
       ]);
+      if(preferArchive&&!archiveId)archiveId=archives.find(x=>x.periodStart===from&&x.periodEnd===to)?.id||null;
       let articles, snapshot = null, insights = null;
       if (archiveId) {
         snapshot = archives.find(item => item.id === archiveId);
@@ -69,7 +71,7 @@
           .where('reportDate', '>=', from).where('reportDate', '<=', to).orderBy('reportDate', 'desc'));
         const matching = archives.find(item => item.periodStart === from && item.periodEnd === to);
         if (matching && matching.count === articles.length && articles.every(item => millis(item.updatedAt) <= millis(matching.generatedAt))) {
-          insights = matching.insights || null;
+          insights = null; // Live/custom ranges never inherit an archive's overall highlights.
         }
       }
       if (request !== ticket) return;
@@ -102,6 +104,30 @@
     }
   }
 
+  async function loadKnowledge() {
+    if (!db || state.knowledgeLoading) return;
+    const request = ++knowledgeTicket; emit({ knowledgeLoading: true, knowledgeError: '' });
+    try {
+      const items = await pages(db.collection(T.knowledge).where('published', '==', true));
+      if (request !== knowledgeTicket) return;
+      const merged=new Map((D.knowledgeSeeds||[]).map(x=>[x.id,{...x}]));for(const x of items){const alias=[x.term,...x.aliases||[]].map(v=>String(v).normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu,''));const match=[...merged.values()].find(v=>[v.term,...v.aliases||[]].some(a=>alias.includes(String(a).normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu,''))));if(match)merged.delete(match.id);merged.set(x.id,{...match,...x,englishTerm:x.englishTerm||match?.englishTerm||'',abbreviation:x.abbreviation||match?.abbreviation||'',translation:x.translation||match?.translation||'',aliases:[...new Set([...(match?.aliases||[]),...(x.aliases||[])])]});}emit({knowledge:[...merged.values()].sort((a,b)=>a.term.localeCompare(b.term,'zh-TW')),knowledgeLoading:false,knowledgeLoaded:true});
+    } catch (error) { if (request === knowledgeTicket) emit({ knowledgeLoading: false, knowledgeError: friendly(error) }); }
+  }
+
+  async function loadRelated(ids) {
+    const request=++ticket;emit({loading:true,error:'',articles:[],snapshot:null,insights:null,relatedIds:ids});
+    try {
+      const valid=[...new Set(ids||[])].filter(id=>/^[a-f0-9]{64}$/.test(id)).slice(-120),items=[];
+      for(let i=0;i<valid.length;i+=20){const page=await db.collection(T.articles).where(firebase.firestore.FieldPath.documentId(),'in',valid.slice(i,i+20)).where('published','==',true).limit(200).get();items.push(...page.docs.map(normal));}
+      if(request===ticket)emit({articles:ReportUtils.sortArticles(items),loading:false,connected:true,range:null});
+    }catch(error){if(request===ticket)emit({loading:false,error:friendly(error)});}
+  }
+
+  async function loadFeedback(){
+    if(!state.admin||!db)return;const request=epoch;emit({feedbackLoading:true,feedbackError:''});
+    try{const page=await db.collection(T.feedback).orderBy('createdAt','desc').limit(100).get();if(request===epoch&&state.admin)emit({feedback:page.docs.map(normal),feedbackLoading:false});}
+    catch(e){if(request===epoch&&state.admin)emit({feedbackLoading:false,feedbackError:friendly(e)});}
+  }
   async function refreshAdmin() {
     if (!state.admin) return;
     const request = epoch;
@@ -119,6 +145,7 @@
   }
 
   async function refresh() {
+    if(state.relatedIds){await loadRelated(state.relatedIds);if(state.admin)await refreshAdmin();return;}
     const range = state.range || ReportUtils.bounds();
     await loadRange(range.from, range.to, { archiveId: state.snapshot?.id });
     if (state.admin) await refreshAdmin();
@@ -140,7 +167,7 @@
     listeners.push(fn); fn({ ...state });
     return () => { const index = listeners.indexOf(fn); if (index >= 0) listeners.splice(index, 1); };
   }
-  window.PlatformBackend = { state, onState, loadRange, loadRemoved, refresh, refreshAdmin, call, signIn, signOut, friendly };
+  window.PlatformBackend = { state, onState, loadRange, loadRelated, loadKnowledge, loadRemoved, loadFeedback, refresh, refreshAdmin, call, signIn, signOut, friendly };
 
   try {
     if (!window.firebase || !window.FIREBASE_CONFIG) throw Error('連線元件未載入，請確認網路後重新整理。');
@@ -148,13 +175,13 @@
       : firebase.initializeApp(window.FIREBASE_CONFIG);
     db = app.firestore(); auth = app.auth(); functions = app.functions(window.PLATFORM_REGION || 'asia-east1');
     const range = ReportUtils.bounds();
-    loadRange(range.from, range.to);
+    loadRange(range.from, range.to, {preferArchive:true});
     auth.onAuthStateChanged(async user => {
       const request = ++epoch;
       ++removedRequest; removedCursor = null;
       emit({ user: user ? { uid: user.uid, email: user.email } : null, admin: false, checkingAdmin: !!user,
         sources: [], settings: null, runtime: null, quota: null, lastRun: null,
-        removed: [], removedLoading: false, removedError: '', removedHasMore: false });
+        removed: [], removedLoading: false, removedError: '', removedHasMore: false, feedback:[],feedbackLoading:false,feedbackError:'' });
       if (!user) return;
       try {
         const admin = await db.doc('admins/' + user.uid).get();
