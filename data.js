@@ -36,7 +36,8 @@ window.PLATFORM_DATA = {
     "visibility": "susSetVisibility",
     "feedback": "susSaveSource",
     "permanentDelete": "susSetVisibility",
-    "compact": "susGenerateWeeklyReport"
+    "compact": "susGenerateWeeklyReport",
+    "backfill": "susBackfillControl"
   },
   "topics": [
     "政策與揭露",
