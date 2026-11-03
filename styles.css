@@ -540,3 +540,15 @@ input,select,textarea{max-width:100%}
 .source-row {gap:1rem;}
 .source-row small {overflow-wrap:anywhere;}
 .history-date-jump {margin:.2rem;font-size:.85rem;}
+
+/* 2026-11 historical source admin: operations never shift because of URL length. */
+.source-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:14px;row-gap:10px;width:100%}
+.source-copy{min-width:0;max-width:100%;overflow:hidden}
+.source-copy a{display:block;max-width:100%;overflow-wrap:anywhere;word-break:break-word}
+.source-copy small,.source-url{display:block;overflow-wrap:anywhere;word-break:break-word;line-height:1.4}
+.source-operations{display:flex;flex-flow:row nowrap;gap:6px;align-items:center;justify-content:flex-end;flex-shrink:0;min-width:max-content}
+.source-operations .btn{flex:0 0 54px;min-width:54px;padding:7px 9px;white-space:nowrap;text-align:center}
+.history-progress{width:100%;height:8px;background:var(--line,#e2e7e4);border-radius:99px;overflow:hidden;margin:10px 0}
+.history-progress>span{display:block;height:100%;background:var(--primary,#1d604f);border-radius:99px;transition:width .2s ease}
+.history-success{font-weight:600}
+@media(max-width:560px){.source-row{grid-template-columns:minmax(0,1fr)}.source-operations{justify-content:flex-start}.source-operations .btn{flex-basis:54px}}
