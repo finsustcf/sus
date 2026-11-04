@@ -203,7 +203,7 @@
        ${job.status==='complete'?'<p class="history-success">這一天的來源搜尋與文章處理已結束。收錄 0 篇也屬於正常完成。</p>':''}
        ${job.needsRefresh?'<p class="small-note">搜尋規則或啟用來源已有更新，這一天需重新檢查才會計入歷史週報。</p>':''}
        ${job.sourceLogs?.length?`<details><summary>各來源搜尋結果（${job.sourceLogs.length}）</summary>${job.sourceLogs.map(x=>`<article class="history-log"><strong>${esc(x.name)} ・ ${x.status==='complete'?'已完成':'搜尋失敗'}</strong><p>候選 ${Number(x.candidates)||0} 篇${x.checked?.officialDateCoverage?' ・ 官網涵蓋此日':''}${x.checked?.rss?' ・ 日期搜尋完成':''}${x.checked?.official&&!x.checked?.officialDateCoverage?' ・ 官網已讀取':''}</p>${x.error?`<p class="source-error">${esc(x.error)}</p>`:''}${(x.warnings||[]).map(w=>`<p class="small-note">${esc(w)}</p>`).join('')}${(x.links||[]).map(y=>`<p><a target="_blank" rel="noopener noreferrer" href="${esc(U.safeURL(y.url))}">${esc(y.title)}</a></p>`).join('')}</article>`).join('')}</details>`:''}
-       ${job.items?.length?`<details><summary>新聞分析紀錄（${job.items.length}）</summary>${job.items.map(x=>`<p><a target="_blank" rel="noopener noreferrer" href="${esc(U.safeURL(x.url))}">${esc(x.title)}</a> ・ ${esc(x.status)}</p>`).join('')}</details>`:''}
+       ${job.items?.length?`<details><summary>新聞分析紀錄（${job.items.length}）</summary>${job.items.map(x=>`<p><a target="_blank" rel="noopener noreferrer" href="${esc(U.safeURL(x.url))}">${esc(x.title)}</a> ・ ${esc(x.status)}${x.status==='pending'&&['partial','failed'].includes(job.status)&&!job.stale?` <button type="button" class="btn history-skip-item" data-action="history-skip-item" data-id="${esc(x.id)}">略過此篇</button>`:''}</p>`).join('')}</details>`:''}
        </div>`:''}
        <div class="run-status history-week"><div class="history-week-heading"><h3>歷史週報</h3>${week?`<span class="history-week-count">${countReady}／7 天完成</span>`:''}</div>
        ${week?`<p class="history-week-period">${esc(week.monday)} ～ ${esc(week.days[6])}</p>
@@ -319,13 +319,20 @@
     catch(e){$('feedback-error').textContent=e.message;}
     finally{state.feedbackBusy=false;submit.disabled=false;submit.textContent='送出回報';}
   }
-  const adminActions = new Set(['settings-tab', 'initialize', 'collect', 'build-weekly', 'toggle-pipeline', 'toggle-source', 'edit', 'hide', 'restore', 'reload-removed', 'more-removed', 'permanent-delete', 'reload-feedback', 'skip-pending', 'more-pending', 'reload-pending', 'history-report', 'history-jump', 'history-source-add', 'history-source-edit', 'history-source-cancel', 'history-source-toggle', 'history-source-remove', 'daily-source-edit', 'daily-source-remove']);
+  const adminActions = new Set(['settings-tab', 'initialize', 'collect', 'build-weekly', 'toggle-pipeline', 'toggle-source', 'edit', 'hide', 'restore', 'reload-removed', 'more-removed', 'permanent-delete', 'reload-feedback', 'skip-pending', 'more-pending', 'reload-pending', 'history-report', 'history-jump', 'history-skip-item', 'history-source-add', 'history-source-edit', 'history-source-cancel', 'history-source-toggle', 'history-source-remove', 'daily-source-edit', 'daily-source-remove']);
   document.addEventListener('click', async event => {
     const button = event.target.closest('[data-action]'); if (!button) return;
     event.preventDefault(); const action = button.dataset.action, id = button.dataset.id;
     if (adminActions.has(action) && (!B().admin || state.busy)) return;
     switch (action) {
       case 'history-jump': state.historyDate=button.dataset.date;await pollHistory();break;
+      case 'history-skip-item':{
+        const job=state.historyStatus?.job,item=job?.items?.find(x=>x.id===id);
+        if(!item||item.status!=='pending')break;
+        if(!window.confirm(`確定手動略過「${item.title}」？\n這篇文章不會納入歷史週報，操作會保留紀錄。`))break;
+        await historyTask({operation:'skip-item',date:state.historyDate,itemId:id,reason:'管理員手動略過待處理文章'},'已略過這篇文章，正在重新計算當日進度。');break;
+      }
+
       case 'history-report': {const week=state.historyStatus?.week;
         if(!week?.ready||week.locked){toast('七天尚未完成，或本週已定稿。');break;}
         if(!window.confirm(`確認將 ${week.monday} 起七天的歷史週報建立並定稿？定稿後不可自動覆蓋。`))break;
