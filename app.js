@@ -18,7 +18,7 @@
   const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.arrow}</svg>`;
   const state = { page: 'weekly', mode: 'previous', ...U.bounds(), search: '', topic: '', region: '', type: '',
     selected: new Set(), limit: 8, customOpen: false, settingsTab: 'updates', knowledgeSearch: '', knowledgeTopic: '', focusIds: null, feedbackBusy:false,feedbackRequestId:null,historyStatus:null,historyDate:'2026-01-01',historyEditingSource:null,dailyEditingSource:null,busy: false };
-  let historyPollTimer=null; let timer, returnFocus, accountRequested = false, previousUID = null, previousAdmin = false;
+  let historyPollTimer=null; let historyPollInFlight=false; let historyResumeRetryAt=0; let timer, returnFocus, accountRequested = false, previousUID = null, previousAdmin = false;
 
   const periodItems = () => B().articles.filter(item => U.articleDay(item) >= state.from && U.articleDay(item) <= state.to)
     .map(item => ({ ...item, topics: Array.isArray(item.topics) ? item.topics : [], region: U.articleRegion(item) }))
@@ -54,7 +54,7 @@
     $('main-content').innerHTML = `<div class="period-row">${state.page==='history'?`<div class="archive-controls"><button class="btn" data-action="history">返回週報列表</button></div>`:`<div class="period-tabs" role="group" aria-label="資料期間">
       ${[['previous', '上週週報'], ['current', '本週資訊'], ['custom', '自訂期間']].map(([mode, label]) => `<button class="period-tab ${(state.mode === mode) ? 'active' : ''}" data-action="period" data-mode="${mode}" aria-pressed="${state.mode === mode}">${label}</button>`).join('')}
       </div>`}<p class="updated">更新時間：${time(B().snapshot?.generatedAt || B().status?.lastSuccessAt)}</p></div>
-      <div id="custom-period"></div>${B().snapshot?.historyCoverage==='provisional'?'<p class="settings-note">歷史回補中：此週報為暫定版本，仍可能補入其他銀行新聞。</p>':''}<section class="report-panel" aria-labelledby="report-period"><div class="report-identity">
+      <div id="custom-period"></div>${['provisional','partial'].includes(B().snapshot?.historyCoverage)?'<p class="settings-note">本週報依已取得的新聞彙整，部分歷史來源未能完整讀取。</p>':''}<section class="report-panel" aria-labelledby="report-period"><div class="report-identity">
       <p class="report-label">${icon('calendar')}${modeLabel()}</p><h1 class="report-period" id="report-period">${U.period(state.from,state.to)}</h1><p class="report-count" id="report-count"></p>
       </div></section><section class="highlights" id="highlights" aria-labelledby="highlights-title"></section>
       <section class="information-panel" aria-labelledby="list-title"><div class="information-top"><h2 id="list-title">${scopeLabel()}資訊</h2><div class="export-area"><p class="export-label" id="export-label" aria-live="polite"></p><div class="export-buttons">
@@ -156,15 +156,14 @@
     return `<form id="${edit ? 'edit' : 'article'}-form" class="stack-form" ${edit ? `data-id="${esc(item.id)}"` : ''}><label class="field">資訊標題<input name="title" required maxlength="180" value="${esc(item?.title || '')}"></label>${edit ? `<label class="field">重點摘要<textarea name="summary" required rows="6" maxlength="${D.summaryLimit}">${esc(item.summary)}</textarea></label><label class="field">值得關注<textarea name="implication" rows="4" maxlength="800">${esc(item.implication)}</textarea></label><label class="field">主要主題<select name="topic">${D.topics.map(topic => `<option ${item.topics?.[0] === topic ? 'selected' : ''}>${esc(topic)}</option>`).join('')}</select></label>` : `<label class="field">原文網址<input name="url" type="url" required placeholder="https://" value="${esc(item?.url||'')}"></label><label class="field">來源名稱<input name="source" required maxlength="100"></label><div class="field-pair"><label class="field">類型<select name="type">${D.sourceTypes.map(type => `<option ${item?.type===type?'selected':''}>${esc(type==='同業公告'?'銀行同業':type)}</option>`).join('')}</select></label><label class="field">來源地區<select name="region"><option ${item?.region==='國內'?'selected':''}>國內</option><option ${item?.region==='國外'?'selected':''}>國外</option></select></label></div><label class="field">發布日期（選填）<input name="date" type="date" max="${U.today()}"></label><label class="field">公開文字（選填）<textarea name="manualText" rows="5" maxlength="18000" placeholder="原網站讀取受限時，可貼入同一網址的公開文字，至少100字。"></textarea></label>`}<p class="form-error" id="form-error" role="alert"></p><button class="btn btn-primary" ${state.busy ? 'disabled' : ''}>${state.busy ? '處理中…' : edit ? '儲存修改' : '擷取並整理'}</button></form>`;
   }
   function pendingSection(){
-    const backend=B(),items=backend.pendingItems||[],sources=(backend.sources||[]).filter(x=>x.enabled&&x.lastError);
-    const generic=(backend.lastRun?.errors||[]).filter(x=>!x.url&&!x.title&&x.source==='更新作業');
-    return `<section class="pending-section"><div class="section-heading"><h3>系統尚未完成的處理工作</h3><button class="text-btn" data-action="reload-pending" ${state.busy||backend.pendingLoading?'disabled':''}>重新讀取</button></div>
-    ${backend.pendingError?`<p class="form-error" role="alert">${esc(backend.pendingError)}</p>`:''}
-    ${items.map(x=>`<article class="pending-row"><div><h4>${esc(x.title)}</h4><p>來源：${esc(x.source)}</p><p>原因：${esc(x.reason||'等待下一次更新處理')}</p>${U.safeURL(x.url)?`<a href="${esc(U.safeURL(x.url))}" target="_blank" rel="noopener noreferrer">查看原文</a>`:''}</div></article>`).join('')}
-    ${sources.map(x=>`<article class="pending-row"><div><h4>${esc(x.name)}</h4><p>來源清單讀取失敗（尚未取得文章）</p><p>原因：${esc(x.lastError)}</p></div></article>`).join('')}
-    ${generic.map(x=>`<p>更新作業：${esc(x.message)}</p>`).join('')}
-    ${backend.pendingLoading?'<p role="status">讀取待處理資訊中…</p>':!items.length&&!sources.length&&!generic.length&&!backend.pendingError?'<p class="small-note">目前沒有待處理資訊。</p>':''}
-    ${backend.pendingCursor?`<button class="btn" data-action="more-pending" ${state.busy||backend.pendingLoading?'disabled':''}>載入更多待處理資訊</button>`:''}</section>`;
+    const backend=B(),items=backend.pendingItems||[],total=Number(backend.pendingTotal)||items.length;
+    const sources=(backend.sources||[]).filter(x=>x.enabled&&!x.deleted&&x.lastError);
+    return `<section class="pending-section"><div class="section-heading"><h3>更新狀態</h3><button class="text-btn" data-action="reload-pending" ${state.busy||backend.pendingLoading?'disabled':''}>重新讀取</button></div>
+    <p>${total?`尚有 ${total} 篇資訊等待處理，後續更新會接續。`:'目前沒有等待處理的資訊。'}</p>
+    ${backend.pendingError?`<p class="form-error" role="alert">待處理清單暫時無法讀取：${esc(backend.pendingError)}</p>`:''}
+    ${total?`<details class="status-details"><summary>查看待處理文章（${total} 篇）</summary><div class="status-detail-list">${items.map(x=>`<article class="pending-row"><div><h4>${esc(x.title)}</h4><p>${esc(x.source)}</p><p class="small-note">${esc(x.reason||'等待下一次更新接續')}</p>${U.safeURL(x.url)?`<a href="${esc(U.safeURL(x.url))}" target="_blank" rel="noopener noreferrer">查看原文</a>`:''}</div><button type="button" class="btn" data-action="skip-pending" data-id="${esc(x.id)}" ${state.busy?'disabled':''}>略過</button></article>`).join('')}</div>${backend.pendingCursor?`<button class="btn" data-action="more-pending" ${state.busy||backend.pendingLoading?'disabled':''}>載入更多</button>`:''}</details>`:''}
+    ${sources.length?`<details class="status-details"><summary>${sources.length} 個來源暫時無法讀取，其他來源仍會更新</summary><div class="status-detail-list">${sources.map(x=>`<p><strong>${esc(x.name)}</strong><br><span class="small-note">${esc(x.lastError)}</span></p>`).join('')}</div></details>`:''}
+    ${backend.pendingLoading?'<p class="small-note" role="status">正在更新狀態…</p>':''}</section>`;
   }
 
   function settingsDialog(preserveView=false) {
@@ -181,34 +180,39 @@
     let content;
     if (state.settingsTab === 'history') {
       const hist=state.historyStatus||{},job=hist.job,week=hist.week;
-      const labels={queued:'準備搜尋',running:'搜尋中',complete:'已完成',partial:'文章處理尚未完成',failed:'搜尋失敗'};
-      const running=job&&['queued','running'].includes(job.status)&&!job.stale;
-      const needsRetry=job&&(['partial','failed'].includes(job.status)||job.stale||job.needsRefresh===true);
+      const labels={queued:'準備搜尋',running:'搜尋中',complete:'已完成',partial:'等待接續',failed:'暫時無法完成'};
+      // A queued job waiting for Eventarc is not necessarily a failed search.
+      // The browser can safely advance queued or expired-lease jobs while open.
+      const running=job&&['queued','running'].includes(job.status);
+      const waiting=job?.status==='partial'&&job.retryAfterMs>0;
+      const needsRetry=job&&(['partial','failed'].includes(job.status)||job.needsRefresh===true);
       const percent=job?.sourceCount?Math.min(100,Math.max(0,Math.round((Number(job.checked)||0)/job.sourceCount*100))):0;
-      const stage=job?.phase==='analyze'?'AI 自動篩選與分析':`搜尋來源${job?.currentSource?'：'+job.currentSource:''}`;
-      const startLabel=week?.locked?'本週已定稿':state.busy?'正在送出…':!job?'搜尋這一天':running?'搜尋中…':job.status==='complete'&&!job.needsRefresh?'已完成':job.needsRefresh?'依新版搜尋這一天':'重試失敗項目';
-      const disabledStart=state.busy||running||week?.locked||(job?.status==='complete'&&!job.needsRefresh);
+      const stage=job?.phase==='analyze'?'正在分析並收錄新聞':'正在搜尋當天新聞';
+      const startLabel=week?.locked?'本週已定稿':state.busy?'正在送出…':waiting?'等待服務恢復':job?.status==='partial'&&job.phase==='analyze'?'接續處理':!job?'搜尋這一天':running?'搜尋中…':job.canRetryEmpty?'再搜尋這一天':job.status==='complete'&&!job.needsRefresh?'已完成':job.needsRefresh?'依新版搜尋這一天':'重新搜尋';
+      const disabledStart=state.busy||running||waiting||week?.locked||(job?.status==='complete'&&!job.needsRefresh&&!job.canRetryEmpty);
       const weekDays=week?.dayResults||week?.days?.map(d=>({date:d,ready:!(week.missing||[]).includes(d),status:'not-started'}))||[];
       const countReady=weekDays.filter(d=>d.ready).length;
       content=`<section class="settings-section history-admin"><h3>歷史新聞回補</h3>
-       <p class="small-note">選一天搜尋，系統會自動篩選、分析、去重並收錄。歷史與每日抓取共用資訊來源；如果整週沒有收錄新聞，請檢查搜尋明細並依新版規則重試，不可產生空白週報。</p>
+       <p class="small-note">使用原本週報的新聞抓取與分析方式，補找過去的相關新聞。搜尋結束後，直接顯示當天收錄了幾篇。</p>
        <form id="history-date-form" class="history-date-form stack-form"><label class="field">搜尋日期<input id="history-date" name="date" type="date" min="2025-12-29" max="${U.today()}" required value="${esc(state.historyDate)}"></label>
        <button class="btn btn-primary" type="submit" ${disabledStart?'disabled':''}>${startLabel}</button></form>
-       ${job?`<div class="run-status" role="status" aria-live="polite"><h3>${esc(state.historyDate)} ・ ${esc(job.stale?'搜尋中斷':labels[job.status]||job.status)}</h3>
-       ${running?`<p>${esc(stage)}・進度自動更新</p>`:''}
+       ${job?`<div class="run-status" role="status" aria-live="polite"><h3>${esc(state.historyDate)}</h3>
+       <p class="history-day-result">${Number(job.dayArticleCount)>0?`✅ 當天已抓到 ${Number(job.dayArticleCount)} 篇相關新聞`:running||job.stale?'正在搜尋，尚未收錄新聞':job.status==='complete'?'本次沒有抓到相關新聞':`目前尚未抓到，搜尋${job.status==='failed'?'遇到問題':'尚未完成'}`}</p>
+       ${running?`<p>${esc(stage)}・已搜尋 ${Number(job.checked)||0}／${Number(job.sourceCount)||0} 個來源</p>`:''}
        <div class="history-progress"><span style="width:${percent}%"></span></div>
-       <p>已檢查來源：${Number(job.checked)||0}／${Number(job.sourceCount)||0} ・ 候選文章：${Number(job.candidates)||0} 篇</p>
-       <p>新增：${Number(job.added)||0} ・ 重複：${Number(job.duplicates)||0} ・ 已處理：${Number(job.processed)||0} ・ 收錄：${Number(job.published)||0} ・ 排除：${Number(job.excluded)||0}</p>
-       ${job.lastError?`<p class="source-error">${esc(job.lastError)}</p>`:''}
-       ${job.status==='complete'?'<p class="history-success">這一天的來源搜尋與文章處理已結束；如本週仍無收錄，請確認搜尋與排除紀錄。</p>':''}
-       ${job.needsRefresh?'<p class="small-note">搜尋規則或啟用來源已有更新，這一天需重新檢查才會計入歷史週報。</p>':''}
-       ${job.sourceLogs?.length?`<details><summary>各來源搜尋結果（${job.sourceLogs.length}）</summary>${job.sourceLogs.map(x=>`<article class="history-log"><strong>${esc(x.name)} ・ ${x.status==='complete'?'已完成':'搜尋失敗'}</strong><p>候選 ${Number(x.candidates)||0} 篇${x.checked?.officialDateCoverage?' ・ 官網涵蓋此日':''}${x.checked?.rss?' ・ 日期搜尋完成':''}${x.checked?.official&&!x.checked?.officialDateCoverage?' ・ 官網已讀取':''}${Number(x.checked?.wordpressCount)?` ・ 歷史資料庫 ${Number(x.checked.wordpressCount)} 篇`:''}${Number(x.checked?.rssItems)?` ・ 搜尋 RSS ${Number(x.checked.rssItems)} 筆`:''}${Number(x.checked?.prefilterRejected)?` ・ 主題預篩排除 ${Number(x.checked.prefilterRejected)} 筆`:''}${Number(x.checked?.wrongDate)?` ・ 日期不符 ${Number(x.checked.wrongDate)} 筆`:''}</p>${x.error?`<p class="source-error">${esc(x.error)}</p>`:''}${(x.warnings||[]).map(w=>`<p class="small-note">${esc(w)}</p>`).join('')}${(x.links||[]).map(y=>`<p><a target="_blank" rel="noopener noreferrer" href="${esc(U.safeURL(y.url))}">${esc(y.title)}</a></p>`).join('')}</article>`).join('')}</details>`:''}
-       ${job.items?.length?`<details><summary>新聞分析紀錄（${job.items.length}）</summary>${job.items.map(x=>`<p><a target="_blank" rel="noopener noreferrer" href="${esc(U.safeURL(x.url))}">${esc(x.title)}</a> ・ ${esc(x.status)}${x.status==='pending'&&['partial','failed'].includes(job.status)&&!job.stale?` <button type="button" class="btn history-skip-item" data-action="history-skip-item" data-id="${esc(x.id)}">略過此篇</button>`:''}</p>`).join('')}</details>`:''}
+       ${!running&&Number(job.dayArticleCount)>0?'<p class="small-note">以上包含原本每日或週報已收錄的新聞，不重複計算。</p>':''}
+       ${!running&&Number(job.dayArticleCount)===0&&job.status==='complete'?'<p class="small-note">本次未找到符合條件的新聞，不代表當天絕對沒有新聞；可以按「再搜尋這一天」。</p>':''}
+       ${job.stale?'<p class="small-note">正在嘗試接續未完成的工作，請保持此頁開啟。</p>':''}
+       ${job.lastError&&['failed','partial'].includes(job.status)?`<p class="small-note">有來源或分析未完成，仍可稍後重新搜尋。</p>`:''}
+       ${waiting?`<p class="small-note">服務或分析額度暫時受限，已保留進度。約 ${Math.max(1,Math.ceil(job.retryAfterMs/60000))} 分鐘後可接續；保持此頁開啟可自動接續。</p>`:''}
+       ${job.sourceWarnings?.length?`<details class="status-details"><summary>部分來源本次未能讀取（${Number(job.sourceWarningCount)||job.sourceWarnings.length} 個）</summary>${job.sourceWarnings.map(x=>`<p class="small-note">${esc(x.name)}：${esc(x.message)}</p>`).join('')}</details>`:''}
+       ${job.needsRefresh?'<p class="small-note">來源有更新，可重新搜尋這一天。</p>':''}
+       ${job.items?.some(x=>x.status==='pending'&&['partial','failed'].includes(job.status))?`<details><summary>處理無法完成的文章（選用）</summary>${job.items.filter(x=>x.status==='pending').map(x=>`<p>${esc(x.title)} <button type="button" class="btn history-skip-item" data-action="history-skip-item" data-id="${esc(x.id)}">略過</button></p>`).join('')}</details>`:''}
        </div>`:''}
        <div class="run-status history-week"><div class="history-week-heading"><h3>歷史週報</h3>${week?`<span class="history-week-count">${countReady}／7 天完成</span>`:''}</div>
        ${week?`<p class="history-week-period">${esc(week.monday)} ～ ${esc(week.days[6])}</p>
        <div class="history-week-grid" aria-label="本週七天搜尋狀態">${weekDays.map((d,i)=>`<button type="button" class="history-week-day ${d.ready?'is-done':d.status==='not-started'?'is-unsearched':'is-pending'} ${state.historyDate===d.date?'is-current':''}" data-action="history-jump" data-date="${esc(d.date)}" aria-label="${esc(d.date)} ${d.ready?'已完成':d.status==='not-started'?'尚未搜尋':'尚未完成'}" title="查看 ${esc(d.date)} 搜尋結果"><span>${['一','二','三','四','五','六','日'][i]}</span><strong>${esc(d.date.slice(5).replace('-','/'))}</strong><small>${d.ready?'✓ 完成':d.status==='not-started'?'未搜尋':d.status==='running'||d.status==='queued'?'搜尋中':'需處理'}</small></button>`).join('')}</div>
-       <p class="small-note">${week.locked?'本週已定稿。':week.ready?(week.articleCount>0?`七天已完成，本週新聞資料庫已收錄 ${Number(week.articleCount)||0} 篇，可建立週報。`:'七天已完成，但本週仍無收錄新聞：請先檢查來源搜尋與排除紀錄，不可定稿。'):'完成七天搜尋後，且有實際收錄新聞，才可建立歷史週報。'}</p>`:'<p class="small-note">選擇歷史日期，即可看到所在週次的七天進度。</p>'}
+       <p class="small-note">${week.locked?'本週已定稿。':week.ready?(week.articleCount>0?`七天已完成，本週新聞資料庫已收錄 ${Number(week.articleCount)||0} 篇，可建立週報。`:'七天已搜尋，但本週尚無收錄新聞，可重新搜尋或手動新增資訊。'):'完成七天搜尋後，且有實際收錄新聞，才可建立歷史週報。'}</p>`:'<p class="small-note">選擇歷史日期，即可看到所在週次的七天進度。</p>'}
        <button class="btn btn-primary" data-action="history-report" ${!week?.canFinalize||week?.locked||state.busy?'disabled':''}>${week?.locked?'已定稿':'建立並定稿週報'}</button></div>
       </section>`;
     } else if (state.settingsTab === 'sources') {
@@ -275,19 +279,43 @@
       if($('settings-dialog').open)settingsDialog();
       return result;
     }catch(e){toast(e.message);const msg=$('history-form-error');if(msg)msg.textContent=e.message;}
-    finally{state.busy=false;if($('settings-dialog').open&&['history','sources'].includes(state.settingsTab))settingsDialog(true);}
+    finally{
+      state.busy=false;
+      if($('settings-dialog').open&&['history','sources'].includes(state.settingsTab))settingsDialog(true);
+      if(['start','retry'].includes(payload.operation))window.setTimeout(pollHistory,0);
+    }
   }
   async function pollHistory(){
-    if(!B().admin||!$('settings-dialog').open||!['history','sources'].includes(state.settingsTab)||state.busy)return;
-    try{state.historyStatus=await window.PlatformBackend.call(D.functions.backfill,{operation:'status',date:state.historyDate});
-      if($('settings-dialog').open&&state.settingsTab==='history')settingsDialog(true);}
-    catch(e){console.warn('歷史狀態暫時無法讀取',e.message);}
+    if(historyPollInFlight||!B().admin||!$('settings-dialog').open||!['history','sources'].includes(state.settingsTab)||state.busy)return;
+    historyPollInFlight=true;
+    const date=state.historyDate;
+    try{
+      const result=await window.PlatformBackend.call(D.functions.backfill,{operation:'status',date});
+      if(date!==state.historyDate)return; // Never replace a newer selected day's status.
+      state.historyStatus=result;
+      if($('settings-dialog').open&&state.settingsTab==='history')settingsDialog(true);
+      const job=result?.job;
+      // Eventarc remains the normal self-driving path. This browser-assisted
+      // path makes one bounded unit of progress if the trigger never fires.
+      // It cannot create/retry jobs or alter finalized reports.
+      const needsHelp=job&&((job.status==='queued'&&!(job.retryAfterMs>0))||(job.status==='running'&&job.stale)||(job.status==='partial'&&job.phase==='analyze'&&job.retryAfterMs===0&&job.retryAt));
+      if(needsHelp&&state.settingsTab==='history'&&Date.now()>=historyResumeRetryAt){
+        try{
+          await window.PlatformBackend.call(D.functions.backfill,{operation:'advance',date});
+          historyResumeRetryAt=0;
+          if(date===state.historyDate){
+            state.historyStatus=await window.PlatformBackend.call(D.functions.backfill,{operation:'status',date});
+            if($('settings-dialog').open&&state.settingsTab==='history')settingsDialog(true);
+          }
+        }catch(error){
+          // Avoid hammering the callable on a network/permission failure.
+          historyResumeRetryAt=Date.now()+45000;
+          console.warn('歷史搜尋備援接續未完成',error.message);
+        }
+      }
+    }catch(e){console.warn('歷史狀態暫時無法讀取',e.message);}
+    finally{historyPollInFlight=false;}
   }
-  document.addEventListener('change',async event=>{
-    if(event.target?.id!=='history-date'||!B().admin)return;
-    state.historyDate=event.target.value;
-    await pollHistory();
-  });
   historyPollTimer=window.setInterval(pollHistory,9000);
   function payload() {
     const articles=(state.selected.size?selectedItems():filtered()).map(U.reportArticle);
@@ -408,7 +436,7 @@
   });
   document.addEventListener('change', async event => {
     const target = event.target;
-    if(target.id==='history-date'){state.historyDate=target.value;await pollHistory();return;}
+    if(target.id==='history-date'){state.historyDate=target.value;state.historyStatus=null;await pollHistory();return;}
     if(target.id==='knowledge-topic'){state.knowledgeTopic=target.value;renderKnowledgeList();return;}
     if (target.id === 'topic-filter' || target.id === 'region-filter' || target.id==='type-filter') {
       state[{'topic-filter':'topic','region-filter':'region','type-filter':'type'}[target.id]] = target.value; state.focusIds = null;
@@ -433,9 +461,9 @@
     if(id==='history-date-form'){
       if(!B().admin)return;state.historyDate=values.date;
       const prior=state.historyStatus?.job;
-      const resume=prior&&(prior.needsRefresh||['failed','partial'].includes(prior.status)||prior.stale);
+      const resume=prior&&(prior.needsRefresh||prior.canRetryEmpty||['failed','partial'].includes(prior.status)||prior.stale);
       if(prior&&!resume){toast('這一天正在搜尋或已經完成。');return;}
-      await historyTask({operation:resume?'retry':'start',date:state.historyDate},resume?'已重新啟動需要檢查的部分。':'已開始搜尋這一天。');return;
+      await historyTask({operation:resume?'retry':'start',date:state.historyDate},resume?'已接續處理，保留先前完成的進度。':'已開始搜尋這一天。');return;
     }
     if(id==='history-source-form'){
       if(!B().admin)return;
