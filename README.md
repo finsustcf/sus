@@ -1,6 +1,6 @@
-# 公平待客暨金融友善週報
+# 永續金融週報
 
-網址：https://finsustcf.github.io/tcf/
+網址：https://finsustcf.github.io/sus/
 
 ## 閱讀與下載
 

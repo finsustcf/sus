@@ -183,7 +183,7 @@
   }
   function articleForm(item) {
     const edit = !!item;
-    return `<form id="${edit ? 'edit' : 'article'}-form" class="stack-form" ${edit ? `data-id="${esc(item.id)}"` : ''}><label class="field">資訊標題<input name="title" required maxlength="180" value="${esc(item?.title || '')}"></label>${edit ? `<label class="field">重點摘要<textarea name="summary" required rows="6" maxlength="${D.summaryLimit}">${esc(item.summary)}</textarea></label><label class="field">值得關注<textarea name="implication" rows="4" maxlength="800">${esc(item.implication)}</textarea></label><label class="field">主要主題<select name="topic">${D.topics.map(topic => `<option ${item.topics?.[0] === topic ? 'selected' : ''}>${esc(topic)}</option>`).join('')}</select></label>${U.attachments(item).length?`<fieldset class="field"><legend>檢查本文附件（勾選要移除的錯誤連結）</legend><p class="small-note">只有你勾選的附件會移除；原文網址及新聞內容保留。</p>${U.attachments(item).map(file=>`<label class="field"><input type="checkbox" name="removeAttachment" value="${esc(file.url)}">移除：${esc(file.name)} <small>${esc(file.url)}</small></label>`).join('')}</fieldset>`:''}` : `<label class="field">原文網址<input name="url" type="url" required placeholder="https://" value="${esc(item?.url||'')}"></label><label class="field">來源名稱<input name="source" required maxlength="100"></label><div class="field-pair"><label class="field">類型<select name="type">${D.sourceTypes.map(type => `<option ${item?.type===type?'selected':''}>${esc(type==='同業公告'?'銀行同業':type)}</option>`).join('')}</select></label><label class="field">來源地區<select name="region"><option ${item?.region==='國內'?'selected':''}>國內</option><option ${item?.region==='國外'?'selected':''}>國外</option></select></label></div><label class="field">發布日期（選填）<input name="date" type="date" max="${U.today()}"></label><label class="field">公開文字（選填）<textarea name="manualText" rows="5" maxlength="18000" placeholder="原網站讀取受限時，可貼入同一網址的公開文字，至少100字。"></textarea></label>`}<p class="form-error" id="form-error" role="alert"></p><button class="btn btn-primary" ${state.busy ? 'disabled' : ''}>${state.busy ? '處理中…' : edit ? '儲存修改' : '擷取並整理'}</button></form>`;
+    return `<form id="${edit ? 'edit' : 'article'}-form" class="stack-form" ${edit ? `data-id="${esc(item.id)}"` : ''}><label class="field">資訊標題<input name="title" required maxlength="180" value="${esc(item?.title || '')}"></label>${edit ? `<label class="field">重點摘要<textarea name="summary" required rows="6" maxlength="${D.summaryLimit}">${esc(item.summary)}</textarea></label><label class="field">值得關注<textarea name="implication" rows="4" maxlength="800">${esc(item.implication)}</textarea></label><label class="field">主要主題<select name="topic">${D.topics.map(topic => `<option ${item.topics?.[0] === topic ? 'selected' : ''}>${esc(topic)}</option>`).join('')}</select></label>` : `<label class="field">原文網址<input name="url" type="url" required placeholder="https://" value="${esc(item?.url||'')}"></label><label class="field">來源名稱<input name="source" required maxlength="100"></label><div class="field-pair"><label class="field">類型<select name="type">${D.sourceTypes.map(type => `<option ${item?.type===type?'selected':''}>${esc(type==='同業公告'?'銀行同業':type)}</option>`).join('')}</select></label><label class="field">來源地區<select name="region"><option ${item?.region==='國內'?'selected':''}>國內</option><option ${item?.region==='國外'?'selected':''}>國外</option></select></label></div><label class="field">發布日期（選填）<input name="date" type="date" max="${U.today()}"></label><label class="field">公開文字（選填）<textarea name="manualText" rows="5" maxlength="18000" placeholder="原網站讀取受限時，可貼入同一網址的公開文字，至少100字。"></textarea></label>`}<p class="form-error" id="form-error" role="alert"></p><button class="btn btn-primary" ${state.busy ? 'disabled' : ''}>${state.busy ? '處理中…' : edit ? '儲存修改' : '擷取並整理'}</button></form>`;
   }
   // Reuse controls on background updates so focus, edits and open details survive.
   function updateDialogMarkup(dialog,html){
@@ -259,7 +259,7 @@
     const priorDialog=$('settings-dialog');
     const savedScroll=preserveView&&priorDialog.open?priorDialog.scrollTop:0;
     if (!B().admin) return;
-    const backend = B(), settings = backend.settings || {}, run = backend.lastRun;const week=backend.archives.find(x=>x.periodStart===U.bounds().from);const hasPoints=!!week?.insights?.insights?.length;
+    const backend = B(), settings = backend.settings || {}, run = backend.lastRun;
     const ready = !!backend.settings && (!D.requiresUpgrade || settings.version === 3);
     const sourceRows = media => {
       const sources = backend.sources.filter(source => (source.type === '新聞媒體') === media);
@@ -328,7 +328,6 @@
     } else {
       content = `<section class="settings-section"><div class="schedule-row"><span>資訊蒐集</span><strong>每天 08:00、12:00、16:00</strong></div><div class="schedule-row"><span>上週週報整理</span><strong>週一 00:00 啟動</strong></div><div class="pipeline-state"><span class="status-dot ${settings.enabled ? 'enabled' : ''}"></span>自動更新${settings.enabled ? '已開啟' : '尚未開啟'}</div>
         <div class="settings-actions">${!ready ? `<button class="btn btn-primary" data-action="initialize" ${state.busy ? 'disabled' : ''}>啟用平台與預設來源</button>` : `<button class="btn ${settings.enabled?'action-stop':'action-start'}" data-action="toggle-pipeline" ${state.busy ? 'disabled' : ''}>${settings.enabled ? '暫停自動更新' : '開啟自動更新'}</button><button class="btn" data-action="collect" ${state.busy ? 'disabled' : ''}>${state.busy ? '處理中…' : '立即更新'}</button><button class="btn" data-action="build-weekly" ${state.busy ? 'disabled' : ''}>重新彙整上週週報</button>`}</div>
-        <section class="run-status"><h3>上週週報整理狀態</h3><p>${week?`文章已封存 ${week.count||0} 則｜${hasPoints?(week.highlightsError?'沿用先前重點，本次整理未完成':'重點已完成'):week.count?'重點未完成':'期間內沒有資訊'}`:'尚未封存上週週報'}</p>${week&&week.count&&(week.highlightsError||!hasPoints)?`<p class="form-error">${esc(week.highlightsError||'重點尚未產生，請重新彙整上週週報。')}</p>`:''}</section>
         ${backend.runtime?.message ? `<p class="status-message">${esc(backend.runtime.message)}</p>` : ''}
         ${run ? `<div class="run-status"><h3>最近一次更新</h3><p>${time(run.startedAt)}・新增 ${run.created||0} 則${run.state==='running'?'・執行中':''}</p>${run.message?`<p>${esc(run.message)}</p>`:''}</div>`:''}${pendingSection()}
         </section>`;
@@ -582,7 +581,7 @@
     if(id==='history-date-form'){
       if(!B().admin||state.historyLoading||state.historyReadFailed||values.date!==state.historyDate)return;
       const prior=state.historyStatus?.job;
-      const resume=prior&&(prior.needsRefresh||prior.canRetryEmpty||['failed','partial'].includes(prior.status));
+      const resume=prior&&(prior.needsRefresh||prior.canRetryEmpty||['failed','partial'].includes(prior.status)||prior.stale);
       if(prior&&!resume){toast('這一天正在搜尋或已經完成。');return;}
       await historyTask({operation:resume?'retry':'start',date:state.historyDate},resume?'已接續處理，保留先前完成的進度。':'已開始搜尋這一天。');return;
     }
@@ -604,8 +603,6 @@
       const patch = { title: values.title, summary: values.summary, implication: values.implication, id: prior.id,
         topics: values.topic === prior.topics?.[0] ? prior.topics : [values.topic] };
       patch.facts=prior.facts||[];
-      const removeAttachmentUrls=new FormData(form).getAll('removeAttachment');
-      if(removeAttachmentUrls.length){if(!window.confirm(`確定移除此篇新聞的 ${removeAttachmentUrls.length} 個附件連結？原文與新聞內容會保留。`))return;patch.removeAttachmentUrls=removeAttachmentUrls;}
       await task('edit', patch, '修改已儲存。');
     }
 
