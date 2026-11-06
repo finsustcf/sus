@@ -11,25 +11,7 @@
   function safeURL(s){try{const u=new URL(s);return /^https?:$/.test(u.protocol)&&!u.username&&!u.password?u.href:'';}catch{return '';}}
   function sortArticles(items){const order={high:0,medium:1,low:2};return [...items].sort((a,b)=>(order[a.priority]??2)-(order[b.priority]??2)||articleDay(b).localeCompare(articleDay(a))||String(a.id).localeCompare(String(b.id)));}
   function topics(items){const m=new Map();items.forEach(a=>[...new Set(a.topics||[])].forEach(t=>m.set(t,(m.get(t)||0)+1)));return [...m].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],'zh-TW'));}
-  const DOMESTIC_HOSTS = new Set([
-  'www.fsc.gov.tw', 'fsc.gov.tw', 'www.banking.gov.tw', 'banking.gov.tw', 
-  'law.fsc.gov.tw', 'tcf.sfi.org.tw', 'www.ba.org.tw', 'ba.org.tw', 
-  'www.foi.org.tw', 'foi.org.tw', 'www.cna.com.tw', 'netzero.cna.com.tw', 'www.ctee.com.tw',
-  'www.bot.com.tw', 'bot.com.tw', 'www.landbank.com.tw', 'landbank.com.tw',
-  'www.tcb-bank.com.tw', 'tcb-bank.com.tw', 'www.firstbank.com.tw', 'firstbank.com.tw',
-  'www.hncb.com.tw', 'hncb.com.tw', 'www.chb.com.tw', 'chb.com.tw', 
-  'www.megabank.com.tw', 'megabank.com.tw', 'www.tcbbank.com.tw', 'tcbbank.com.tw',
-  'www.ctbcbank.com', 'ctbcbank.com', 'www.cathaybk.com.tw', 'cathaybk.com.tw',
-  'www.fubon.com', 'fubon.com', 'www.esunbank.com', 'esunbank.com',
-  'www.taishinbank.com.tw', 'taishinbank.com.tw', 'bank.sinopac.com', 'sinopac.com',
-  'www.skbank.com.tw', 'skbank.com.tw', 'www.yuanta.com', 'yuanta.com',
-  'www.kgibank.com.tw', 'kgibank.com.tw', 'www.feib.com.tw', 'feib.com.tw',
-  'www.entieb.com.tw', 'entieb.com.tw', 'www.ubot.com.tw', 'ubot.com.tw',
-  'www.scsb.com.tw', 'scsb.com.tw', 'www.hwataibank.com.tw', 'hwataibank.com.tw',
-  'www.cotabank.com.tw', 'cotabank.com.tw', 'www.o-bank.com', 'o-bank.com',
-  'www.linebank.com.tw', 'linebank.com.tw', 'www.nextbank.com.tw', 'nextbank.com.tw',
-  'www.rakuten-bank.com.tw', 'rakuten-bank.com.tw'
-]);
+  const DOMESTIC_HOSTS=new Set(['www.fsc.gov.tw','fsc.gov.tw','www.banking.gov.tw','banking.gov.tw','law.fsc.gov.tw','tcf.sfi.org.tw','www.ba.org.tw','ba.org.tw','www.foi.org.tw','foi.org.tw','www.esunbank.com','www.cathaybk.com.tw','cathaybk.com.tw','www.taishinbank.com.tw','www.fubon.com','www.bot.com.tw','www.tcb-bank.com.tw','www.cna.com.tw','netzero.cna.com.tw','www.ctee.com.tw']);
   function articleRegion(a){if(['國內','國外'].includes(a.region))return a.region;try{return DOMESTIC_HOSTS.has(new URL(a.url).hostname.toLowerCase())?'國內':'';}catch{return '';}}
   function displayDate(day){return validDate(day)?day.replaceAll('-','/'):'未標示';}
   function dateText(a){return `${a.date||a.publishedAt?'發布日期':'收錄日期'}：${displayDate(articleDay(a))}`;}
