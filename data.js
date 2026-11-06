@@ -8,11 +8,6 @@ window.PLATFORM_DATA = {
   "requiresFacts": false,
   "requiresUpgrade": false,
   "summaryLimit": 1400,
-  "maxPerRun": 6,
-  "defaults": {
-    "dailyLimit": 8,
-    "maxPerRun": 3
-  },
   "collections": {
     "articles": "susArticles",
     "reports": "susWeeklyReports",
@@ -37,6 +32,7 @@ window.PLATFORM_DATA = {
     "feedback": "susSaveSource",
     "permanentDelete": "susSetVisibility",
     "compact": "susGenerateWeeklyReport",
+    "historyStatus": "susHistoryStatus",
     "backfill": "susBackfillControl"
   },
   "topics": [

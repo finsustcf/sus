@@ -137,6 +137,10 @@
     }catch(e){if(request===pendingTicket&&authEpoch===epoch&&state.admin)emit({pendingLoading:false,pendingError:friendly(e)});}
   }
 
+  function applySkipped(ids) {
+    const removed=new Set(ids);
+    emit({pendingItems:state.pendingItems.filter(x=>!removed.has(x.id)),pendingTotal:Math.max(0,state.pendingTotal-removed.size)});
+  }
   async function refreshAdmin() {
     if (!state.admin) return;
     const request = epoch;
@@ -161,10 +165,10 @@
     if (state.admin) await refreshAdmin();
   }
 
-  async function call(name, data = {}) {
+  async function call(name, data = {}, {timeout=540000}={}) {
     if (!functions) throw Error('後端尚未連線。');
     if (!Object.values(D.functions).includes(name)) throw Error('函式範圍無效。');
-    try { return (await functions.httpsCallable(name, { timeout: 540000 })(data)).data; }
+    try { return (await functions.httpsCallable(name, { timeout })(data)).data; }
     catch (error) { throw Error(friendly(error)); }
   }
   async function signIn() {
@@ -177,7 +181,7 @@
     listeners.push(fn); fn({ ...state });
     return () => { const index = listeners.indexOf(fn); if (index >= 0) listeners.splice(index, 1); };
   }
-  window.PlatformBackend = { state, onState, loadRange, loadRelated, loadKnowledge, loadRemoved, loadFeedback, loadPending, refresh, refreshAdmin, call, signIn, signOut, friendly };
+  window.PlatformBackend = { state, onState, loadRange, loadRelated, loadKnowledge, loadRemoved, loadFeedback, loadPending, applySkipped, refresh, refreshAdmin, call, signIn, signOut, friendly };
 
   try {
     if (!window.firebase || !window.FIREBASE_CONFIG) throw Error('連線元件未載入，請確認網路後重新整理。');
